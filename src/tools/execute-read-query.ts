@@ -11,6 +11,7 @@ import {
   executePostgresQuery,
 } from "../lib/query-executor.ts";
 import { validateReadQuery } from "../lib/query-validator.ts";
+import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 export const executeReadQueryGram = new Gram().tool({
   name: "execute_read_query",
@@ -26,10 +27,25 @@ export const executeReadQueryGram = new Gram().tool({
     console.error(`[execute_read_query] Called with input:`, JSON.stringify(input));
     
     try {
-      const token = process.env["PLANETSCALE_API_TOKEN"];
-      if (!token) {
-        return ctx.text(`Error: PLANETSCALE_API_TOKEN environment variable is required. Set it before starting the server.`);
+      // Try ctx.env first, fall back to process.env for local development
+      const env = Object.keys(ctx.env).length > 0
+        ? (ctx.env as Record<string, string | undefined>)
+        : process.env;
+
+      // Debug: log environment info
+      const envSource = Object.keys(ctx.env).length > 0 ? 'ctx.env' : 'process.env';
+      const hasOAuth = !!env["PLANETSCALE_OAUTH2_ACCESS_TOKEN"];
+      const hasApiToken = !!env["PLANETSCALE_API_TOKEN"];
+      console.error(`[execute_read_query] Using env source: ${envSource}`);
+      console.error(`[execute_read_query] Has OAuth token: ${hasOAuth}, Has API token: ${hasApiToken}`);
+
+      // Check authentication
+      const auth = getAuthToken(env);
+      if (!auth) {
+        const debugInfo = `envSource: ${envSource}, hasOAuth: ${hasOAuth}, hasApiToken: ${hasApiToken}`;
+        return ctx.text(`Error: No PlanetScale authentication configured. Set PLANETSCALE_OAUTH2_ACCESS_TOKEN or PLANETSCALE_API_TOKEN. Debug: ${debugInfo}`);
       }
+      console.error(`[execute_read_query] Using auth type: ${auth.authType}`);
 
       const query = input["query"];
       if (!query) {
@@ -50,9 +66,12 @@ export const executeReadQueryGram = new Gram().tool({
         return ctx.text(`Error: ${validation.reason ?? "Query validation failed"}`);
       }
 
+      // Get auth header for API calls
+      const authHeader = getAuthHeader(env);
+
       // Get database info to determine type
       console.error(`[execute_read_query] Fetching database info for ${organization}/${database}`);
-      const db = await getDatabase(organization, database, token);
+      const db = await getDatabase(organization, database, authHeader);
       console.error(`[execute_read_query] Database kind: ${db.kind}`);
 
       if (db.kind === "mysql") {
@@ -63,7 +82,7 @@ export const executeReadQueryGram = new Gram().tool({
           database,
           branch,
           "reader",
-          token
+          authHeader
         );
         console.error(`[execute_read_query] Credentials created, executing query`);
 
@@ -77,7 +96,7 @@ export const executeReadQueryGram = new Gram().tool({
           database,
           branch,
           ["pg_read_all_data"],
-          token
+          authHeader
         );
         console.error(`[execute_read_query] Credentials created, executing query`);
 

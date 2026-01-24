@@ -64,14 +64,15 @@ export class PlanetScaleAPIError extends Error {
 
 async function apiRequest<T>(
   endpoint: string,
-  token: string,
+  authHeader: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
+
   const response = await fetch(url, {
     ...options,
     headers: {
-      Authorization: token,
+      Authorization: authHeader,
       "Content-Type": "application/json",
       ...options.headers,
     },
@@ -117,11 +118,11 @@ async function apiRequest<T>(
 export async function getDatabase(
   organization: string,
   database: string,
-  token: string
+  authHeader: string
 ): Promise<Database> {
   return apiRequest<Database>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}`,
-    token
+    authHeader
   );
 }
 
@@ -133,7 +134,7 @@ export async function createVitessCredentials(
   database: string,
   branch: string,
   role: VitessRole,
-  token: string
+  authHeader: string
 ): Promise<VitessCredentials> {
   const timestamp = Date.now();
   const name = `mcp-query-${timestamp}`;
@@ -149,7 +150,7 @@ export async function createVitessCredentials(
     };
   }>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/passwords`,
-    token,
+    authHeader,
     {
       method: "POST",
       body: JSON.stringify({
@@ -177,7 +178,7 @@ export async function createPostgresCredentials(
   database: string,
   branch: string,
   inheritedRoles: PostgresInheritedRole[],
-  token: string
+  authHeader: string
 ): Promise<PostgresCredentials> {
   const timestamp = Date.now();
   const name = `mcp-query-${timestamp}`;
@@ -194,7 +195,7 @@ export async function createPostgresCredentials(
     };
   }>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/roles`,
-    token,
+    authHeader,
     {
       method: "POST",
       body: JSON.stringify({

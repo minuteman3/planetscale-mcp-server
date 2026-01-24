@@ -11,6 +11,7 @@ import {
   executePostgresQuery,
 } from "../lib/query-executor.ts";
 import { validateWriteQuery } from "../lib/query-validator.ts";
+import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 export const executeWriteQueryGram = new Gram().tool({
   name: "execute_write_query",
@@ -32,10 +33,17 @@ export const executeWriteQueryGram = new Gram().tool({
     console.error(`[execute_write_query] Called with input:`, JSON.stringify(input));
     
     try {
-      const token = process.env["PLANETSCALE_API_TOKEN"];
-      if (!token) {
-        return ctx.text("Error: PLANETSCALE_API_TOKEN environment variable is required. Set it before starting the server.");
+      // Try ctx.env first, fall back to process.env for local development
+      const env = Object.keys(ctx.env).length > 0
+        ? (ctx.env as Record<string, string | undefined>)
+        : process.env;
+
+      // Check authentication
+      const auth = getAuthToken(env);
+      if (!auth) {
+        return ctx.text("Error: No PlanetScale authentication configured. Set PLANETSCALE_OAUTH2_ACCESS_TOKEN or PLANETSCALE_API_TOKEN.");
       }
+      console.error(`[execute_write_query] Using auth type: ${auth.authType}`);
 
       const query = input["query"];
       if (!query) {
@@ -60,8 +68,11 @@ export const executeWriteQueryGram = new Gram().tool({
         return ctx.text(`Error: ${validation.reason ?? "Query validation failed"}${confirmHint}`);
       }
 
+      // Get auth header for API calls
+      const authHeader = getAuthHeader(env);
+
       // Get database info to determine type
-      const db = await getDatabase(organization, database, token);
+      const db = await getDatabase(organization, database, authHeader);
 
       if (db.kind === "mysql") {
         // Vitess database - create password with readwriter role
@@ -70,7 +81,7 @@ export const executeWriteQueryGram = new Gram().tool({
           database,
           branch,
           "readwriter",
-          token
+          authHeader
         );
 
         const result = await executeVitessQuery(credentials, query);
@@ -82,7 +93,7 @@ export const executeWriteQueryGram = new Gram().tool({
           database,
           branch,
           ["pg_read_all_data", "pg_write_all_data"],
-          token
+          authHeader
         );
 
         const result = await executePostgresQuery(credentials, query);
