@@ -18,7 +18,7 @@ import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 export const executeReadQueryGram = new Gram().tool({
   name: "execute_read_query",
   description:
-    "Execute a read-only SQL query (SELECT, SHOW, DESCRIBE, EXPLAIN) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. For Postgres only: use postgres_database_name when the user has created additional databases in the same cluster and wants to query a non-default database.",
+    "Execute a read-only SQL query (SELECT, SHOW, DESCRIBE, EXPLAIN) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. For Postgres only: optionally specify postgres_database_name when the user wants to query a non-default database.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
