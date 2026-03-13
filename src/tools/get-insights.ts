@@ -161,7 +161,8 @@ async function fetchInsights(
   fields?: string[],
   q?: string,
   from?: string,
-  to?: string
+  to?: string,
+  period?: string
 ): Promise<InsightsEntry[]> {
   let url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/insights?per_page=${limit}&sort=${sortBy}&dir=desc`;
   if (tabletType) {
@@ -178,6 +179,9 @@ async function fetchInsights(
   }
   if (to) {
     url += `&to=${encodeURIComponent(to)}`;
+  }
+  if (period) {
+    url += `&period=${encodeURIComponent(period)}`;
   }
 
   const response = await fetch(url, {
@@ -388,6 +392,7 @@ async function fetchSelectedQueries(
     keyspace?: string;
     from?: string;
     to?: string;
+    period?: string;
     perPage: number;
     tabletType?: string;
   },
@@ -508,6 +513,12 @@ export const getInsightsGram = new Gram().tool({
       .describe(
         "Keyspace for fingerprint drill-down. Required to get summary data. Use the `keyspace` value returned in insights results (e.g. 'my_keyspace' for MySQL/Vitess or 'postgres.public' for Postgres databases)."
       ),
+    period: z
+      .string()
+      .optional()
+      .describe(
+        "Shorthand for a recent time window ending at now. Valid values: '15m', '1h', '3h', '6h', '12h', '24h'. When set, overrides from/to. Only supported in discovery mode (ignored in fingerprint mode — use from/to instead)."
+      ),
     from: z
       .string()
       .optional()
@@ -611,6 +622,7 @@ export const getInsightsGram = new Gram().tool({
 
       const from = input["from"];
       const to = input["to"];
+      const period = input["period"];
 
       if (sortBy === "all") {
         // Aggregate mode: fetch from all 5 metrics and deduplicate
@@ -628,7 +640,8 @@ export const getInsightsGram = new Gram().tool({
             fields,
             q,
             from,
-            to
+            to,
+            period
           );
 
           for (const entry of entries) {
@@ -659,7 +672,8 @@ export const getInsightsGram = new Gram().tool({
           fields,
           q,
           from,
-          to
+          to,
+          period
         );
 
         const results = entries.map(filterEntry);
