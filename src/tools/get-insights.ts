@@ -517,7 +517,7 @@ export const getInsightsGram = new Gram().tool({
       .string()
       .optional()
       .describe(
-        "Shorthand for a recent time window ending at now. Valid values: '15m', '1h', '3h', '6h', '12h', '24h'. When set, overrides from/to. Only supported in discovery mode (ignored in fingerprint mode — use from/to instead)."
+        "Shorthand for a recent time window ending at now. Valid values: '15m', '1h', '3h', '6h', '12h', '24h'. Cannot be combined with from/to — use one or the other. Only supported in discovery mode (ignored in fingerprint mode — use from/to instead)."
       ),
     from: z
       .string()
@@ -553,6 +553,12 @@ export const getInsightsGram = new Gram().tool({
       if (!organization || !database || !branch) {
         return ctx.text(
           "Error: organization, database, and branch are required"
+        );
+      }
+
+      if (input["period"] && (input["from"] || input["to"])) {
+        return ctx.text(
+          "Error: 'period' cannot be combined with 'from'/'to'. Use either period (e.g. '1h', '6h') for a recent window, or from/to for a specific time range."
         );
       }
 
