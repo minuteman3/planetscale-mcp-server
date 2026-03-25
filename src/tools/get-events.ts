@@ -231,19 +231,69 @@ function buildKeyspacesUrl(
 }
 
 function buildKeyspaceResizesUrl(
-  org: string, db: string, branch: string, keyspace: string,
+  org: string, db: string, branch: string, keyspace: string, range?: string,
 ): string {
   const params = new URLSearchParams();
   params.set("per_page", "25");
+  if (range) {
+    params.set("completed_at", range);
+  }
   return `${API_BASE}/organizations/${e(org)}/databases/${e(db)}/branches/${e(branch)}/keyspaces/${e(keyspace)}/resizes?${params}`;
 }
 
 function buildShardResizesUrl(
-  org: string, db: string, branch: string, keyspace: string,
+  org: string, db: string, branch: string, keyspace: string, page: number,
 ): string {
   const params = new URLSearchParams();
   params.set("per_page", "25");
+  params.set("page", String(page));
   return `${API_BASE}/organizations/${e(org)}/databases/${e(db)}/branches/${e(branch)}/keyspaces/${e(keyspace)}/shard-resizes?${params}`;
+}
+
+/** Max pages to paginate through for endpoints without server-side time filtering. */
+const MAX_PAGINATION_PAGES = 10;
+
+/**
+ * Fetch shard resizes page-by-page until we've covered the requested time
+ * range (oldest entry is before `fromTime`) or run out of pages.
+ */
+async function fetchAllShardResizes(
+  org: string, db: string, branch: string, keyspace: string,
+  authHeader: string, fromTime: number,
+): Promise<{ entries: ShardResizeEntry[]; truncated: boolean }> {
+  const allEntries: ShardResizeEntry[] = [];
+  let page = 1;
+  let truncated = false;
+
+  while (page <= MAX_PAGINATION_PAGES) {
+    const url = buildShardResizesUrl(org, db, branch, keyspace, page);
+    const list = await apiFetch<PaginatedList<ShardResizeEntry>>(
+      url, authHeader, `shard resizes (${keyspace}) page ${page}`,
+    );
+
+    allEntries.push(...list.data);
+
+    // Check if the oldest entry on this page is before our from time
+    const oldest = list.data.at(-1);
+    if (!oldest) break; // empty page
+
+    const oldestAt = new Date(oldest.completed_at ?? oldest.created_at).getTime();
+    if (oldestAt < fromTime) break; // we've reached past the start of our range
+
+    if (list.next_page == null) break; // no more pages
+    page++;
+  }
+
+  // If we hit the page cap and the oldest entry is still in range, we're truncated
+  if (page > MAX_PAGINATION_PAGES && allEntries.length > 0) {
+    const oldest = allEntries.at(-1)!;
+    const oldestAt = new Date(oldest.completed_at ?? oldest.created_at).getTime();
+    if (oldestAt >= fromTime) {
+      truncated = true;
+    }
+  }
+
+  return { entries: allEntries, truncated };
 }
 
 // ── Tool definition ───────────────────────────────────────────────────
@@ -332,7 +382,7 @@ export const getEventsGram = new Gram().tool({
         Promise.allSettled(
           allKeyspaces.map((ks) =>
             apiFetch<PaginatedList<KeyspaceResizeEntry>>(
-              buildKeyspaceResizesUrl(organization, database, branch, ks),
+              buildKeyspaceResizesUrl(organization, database, branch, ks, range),
               authHeader,
               `keyspace resizes (${ks})`,
             ).then((list) => ({ keyspace: ks, list }))
@@ -340,11 +390,8 @@ export const getEventsGram = new Gram().tool({
         ),
         Promise.allSettled(
           shardedKeyspaces.map((ks) =>
-            apiFetch<PaginatedList<ShardResizeEntry>>(
-              buildShardResizesUrl(organization, database, branch, ks),
-              authHeader,
-              `shard resizes (${ks})`,
-            ).then((list) => ({ keyspace: ks, list }))
+            fetchAllShardResizes(organization, database, branch, ks, authHeader, fromTime)
+              .then((result) => ({ keyspace: ks, ...result }))
           ),
         ),
       ]);
@@ -396,11 +443,12 @@ export const getEventsGram = new Gram().tool({
       for (const r of keyspaceResizeResults) {
         if (r.status === "fulfilled") {
           const { keyspace, list } = r.value;
+          // Server-side completed_at filtering is applied, so all results are in range
           for (const entry of list.data) {
-            const at = new Date(entry.completed_at ?? entry.created_at).getTime();
-            if (at >= fromTime && at <= toTime) {
-              events.push(keyspaceResizeToEvent(keyspace, entry));
-            }
+            events.push(keyspaceResizeToEvent(keyspace, entry));
+          }
+          if (list.next_page != null) {
+            truncated.push(`keyspace_resizes(${keyspace})`);
           }
         } else {
           errors.push(`keyspace resizes: ${formatError(r.reason)}`);
@@ -409,16 +457,17 @@ export const getEventsGram = new Gram().tool({
 
       for (const r of shardResizeResults) {
         if (r.status === "fulfilled") {
-          const { keyspace, list } = r.value;
-          // Client-side time filtering since the API ignores completed_at
-          for (const entry of list.data) {
+          const { keyspace, entries, truncated: isTruncated } = r.value;
+          // Client-side time filtering — the paginating fetcher already walked
+          // back far enough to cover the full from..to range.
+          for (const entry of entries) {
             const at = new Date(entry.completed_at ?? entry.created_at).getTime();
             if (at >= fromTime && at <= toTime) {
               events.push(shardResizeToEvent(keyspace, entry));
             }
           }
-          if (list.next_page != null) {
-            truncated.push(`shard_resizes(${r.value.keyspace})`);
+          if (isTruncated) {
+            truncated.push(`shard_resizes(${keyspace})`);
           }
         } else {
           errors.push(`shard resizes: ${formatError(r.reason)}`);
