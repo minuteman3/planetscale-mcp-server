@@ -4,6 +4,7 @@ import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
+const INTERNAL_API_BASE = "https://api.planetscale.com/internal";
 
 interface Actor {
   id: string;
@@ -163,10 +164,76 @@ async function fetchDeployRequests(
   return (await response.json()) as PaginatedList<DeployRequest>;
 }
 
+interface WorkflowTransition {
+  type: "TransitionEvent";
+  id: string;
+  workflow_number: number;
+  from: string;
+  to: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function summarizeWorkflowTransitions(transitions: WorkflowTransition[]) {
+  const byWorkflow = new Map<
+    number,
+    { id: string; transitions: { from: string; to: string; at: string }[] }
+  >();
+
+  for (const t of transitions) {
+    let workflow = byWorkflow.get(t.workflow_number);
+    if (!workflow) {
+      workflow = { id: t.id, transitions: [] };
+      byWorkflow.set(t.workflow_number, workflow);
+    }
+    workflow.transitions.push({ from: t.from, to: t.to, at: t.created_at });
+  }
+
+  return Array.from(byWorkflow.entries())
+    .sort((a, b) => b[0] - a[0])
+    .map(([num, wf]) => ({
+      workflow_number: num,
+      id: wf.id,
+      current_state: wf.transitions[wf.transitions.length - 1]!.to,
+      started_at: wf.transitions[0]!.at,
+      last_transition_at: wf.transitions[wf.transitions.length - 1]!.at,
+      transitions: wf.transitions,
+    }));
+}
+
+async function fetchWorkflowTransitions(
+  organization: string,
+  database: string,
+  branchName: string,
+  authHeader: string,
+  options: { from?: string; to?: string },
+): Promise<WorkflowTransition[]> {
+  const params = new URLSearchParams();
+  params.set("branch_name", branchName);
+  if (options.from && options.to) {
+    params.set("between", buildRangeFilter(options.from, options.to));
+  }
+
+  const url = `${INTERNAL_API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/workflow-transitions?${params}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: authHeader, Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    let details: unknown;
+    try { details = await response.json(); } catch { details = await response.text(); }
+    throw new PlanetScaleAPIError(`Failed to fetch workflow transitions: ${response.statusText}`, response.status, details);
+  }
+
+  return (await response.json()) as WorkflowTransition[];
+}
+
 export const listDeployRequestsGram = new Gram().tool({
   name: "list_deploy_requests",
   description:
-    "List deploy requests (schema migrations) for a PlanetScale database. Deploy requests show DDL operations (ALTER TABLE, CREATE INDEX, etc.) and their progress.",
+    "List deploy requests (schema migrations) for a PlanetScale database, with optional VReplication workflow transition timelines. Deploy requests show DDL operations (ALTER TABLE, CREATE INDEX, etc.) and their progress. Workflow transitions show the internal VReplication state machine steps (pending → copying → running → verified_data → switching → cutover → completed) for each deploy operation.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -182,13 +249,19 @@ export const listDeployRequestsGram = new Gram().tool({
       .string()
       .optional()
       .describe(
-        "Start of time range (ISO 8601, e.g., '2026-03-25T00:00:00.000Z'). Filters deploy requests by deployed_at. Must be paired with 'to'.",
+        "Start of time range (ISO 8601, e.g., '2026-03-25T00:00:00.000Z'). Filters deploy requests by deployed_at and workflow transitions by transition time. Must be paired with 'to'.",
       ),
     to: z
       .string()
       .optional()
       .describe(
         "End of time range (ISO 8601, e.g., '2026-03-25T23:59:00.000Z'). Must be paired with 'from'.",
+      ),
+    include_workflow_transitions: z
+      .boolean()
+      .optional()
+      .describe(
+        "Include VReplication workflow transition timelines (default: false). Requires into_branch to be set.",
       ),
     page: z.number().optional().describe("Page number (default: 1)"),
     per_page: z
@@ -216,24 +289,59 @@ export const listDeployRequestsGram = new Gram().tool({
       const page = input.page ?? 1;
       const perPage = Math.min(input.per_page ?? 10, 25);
       const authHeader = getAuthHeader(env);
+      const includeWorkflows = input.include_workflow_transitions ?? false;
+      const intoBranch = input.into_branch;
 
-      const list = await fetchDeployRequests(organization, database, authHeader, {
-        intoBranch: input.into_branch,
-        state: input.state,
-        deployedAtFrom: input.from,
-        deployedAtTo: input.to,
-        page,
-        perPage,
-      });
+      const [deployResult, workflowResult] = await Promise.allSettled([
+        fetchDeployRequests(organization, database, authHeader, {
+          intoBranch,
+          state: input.state,
+          deployedAtFrom: input.from,
+          deployedAtTo: input.to,
+          page,
+          perPage,
+        }),
+        includeWorkflows && intoBranch
+          ? fetchWorkflowTransitions(organization, database, intoBranch, authHeader, { from: input.from, to: input.to })
+          : Promise.resolve(null),
+      ]);
 
-      return ctx.json({
-        organization,
-        database,
-        total: list.data.length,
-        page: list.current_page,
-        next_page: list.next_page,
-        requests: list.data.map(summarizeDeployRequest),
-      });
+      const result: Record<string, unknown> = { organization, database };
+
+      if (deployResult.status === "fulfilled") {
+        const list = deployResult.value;
+        result["deploy_requests"] = {
+          total: list.data.length,
+          page: list.current_page,
+          next_page: list.next_page,
+          requests: list.data.map(summarizeDeployRequest),
+        };
+      } else {
+        result["deploy_requests"] = {
+          error: deployResult.reason instanceof PlanetScaleAPIError
+            ? `${deployResult.reason.message} (status: ${deployResult.reason.statusCode})`
+            : "Failed to fetch deploy requests",
+        };
+      }
+
+      if (includeWorkflows && intoBranch) {
+        if (workflowResult.status === "fulfilled" && workflowResult.value) {
+          const workflows = summarizeWorkflowTransitions(workflowResult.value);
+          result["workflow_transitions"] = {
+            branch: intoBranch,
+            total_workflows: workflows.length,
+            workflows,
+          };
+        } else if (workflowResult.status === "rejected") {
+          result["workflow_transitions"] = {
+            error: workflowResult.reason instanceof PlanetScaleAPIError
+              ? `${workflowResult.reason.message} (status: ${workflowResult.reason.statusCode})`
+              : "Failed to fetch workflow transitions",
+          };
+        }
+      }
+
+      return ctx.json(result);
     } catch (error) {
       if (error instanceof PlanetScaleAPIError) {
         return ctx.text(`Error: ${error.message} (status: ${error.statusCode})`);

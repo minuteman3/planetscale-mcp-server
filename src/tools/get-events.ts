@@ -4,6 +4,7 @@ import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
+const INTERNAL_API_BASE = "https://api.planetscale.com/internal";
 
 /**
  * Build a PlanetScale range filter string: "start..end"
@@ -104,6 +105,23 @@ function shardResizeToEvent(keyspace: string, entry: ShardResizeEntry): Timeline
   };
 }
 
+// ── Workflow transitions ──────────────────────────────────────────────
+
+interface WorkflowTransition {
+  workflow_number: number;
+  from: string;
+  to: string;
+  created_at: string;
+}
+
+function workflowTransitionToEvents(transitions: WorkflowTransition[]): TimelineEvent[] {
+  return transitions.map((t) => ({
+    type: "workflow_transition",
+    at: t.created_at,
+    summary: `Workflow #${t.workflow_number}: ${t.from} → ${t.to}`,
+  }));
+}
+
 // ── Keyspace discovery ────────────────────────────────────────────────
 
 interface BranchKeyspace {
@@ -170,6 +188,15 @@ function buildKeyspacesUrl(
   return `${API_BASE}/organizations/${e(org)}/databases/${e(db)}/branches/${e(branch)}/keyspaces`;
 }
 
+function buildWorkflowTransitionsUrl(
+  org: string, db: string, branch: string, range: string,
+): string {
+  const params = new URLSearchParams();
+  params.set("between", range);
+  params.set("branch_name", branch);
+  return `${INTERNAL_API_BASE}/organizations/${e(org)}/databases/${e(db)}/workflow-transitions?${params}`;
+}
+
 function buildKeyspaceResizesUrl(
   org: string, db: string, branch: string, keyspace: string,
 ): string {
@@ -191,7 +218,7 @@ function buildShardResizesUrl(
 export const getEventsGram = new Gram().tool({
   name: "get_events",
   description:
-    "Get a unified chronological timeline of PlanetScale events for a database branch within a time range. Combines VTGate resizes, keyspace/VTTablet resizes, individual shard resizes, and deploy requests (schema migrations) into a single sorted event stream. Automatically discovers keyspaces and fetches per-keyspace resize history. Useful for incident investigation — call with the incident time window to see everything that changed.",
+    "Get a unified chronological timeline of all PlanetScale events for a database branch within a time range. Combines VTGate resizes, keyspace/VTTablet resizes, individual shard resizes, deploy requests (schema migrations), and VReplication workflow transitions into a single sorted event stream. Automatically discovers keyspaces and fetches per-keyspace resize history. Useful for incident investigation — call with the incident time window to see everything that changed.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -232,7 +259,7 @@ export const getEventsGram = new Gram().tool({
       const toTime = new Date(to).getTime();
 
       // Phase 1: Fetch event sources + keyspace list in parallel
-      const [branchResizes, deployRequests, keyspaceList] =
+      const [branchResizes, deployRequests, workflowTransitions, keyspaceList] =
         await Promise.allSettled([
           apiFetch<PaginatedList<BranchResizeEntry>>(
             buildBranchResizesUrl(organization, database, branch, range),
@@ -243,6 +270,11 @@ export const getEventsGram = new Gram().tool({
             buildDeployRequestsUrl(organization, database, branch, range),
             authHeader,
             "deploy requests",
+          ),
+          apiFetch<WorkflowTransition[]>(
+            buildWorkflowTransitionsUrl(organization, database, branch, range),
+            authHeader,
+            "workflow transitions",
           ),
           apiFetch<PaginatedList<BranchKeyspace>>(
             buildKeyspacesUrl(organization, database, branch),
@@ -310,6 +342,12 @@ export const getEventsGram = new Gram().tool({
         }
       } else {
         errors.push(`deploy requests: ${formatError(deployRequests.reason)}`);
+      }
+
+      if (workflowTransitions.status === "fulfilled") {
+        events.push(...workflowTransitionToEvents(workflowTransitions.value));
+      } else {
+        errors.push(`workflow transitions: ${formatError(workflowTransitions.reason)}`);
       }
 
       if (keyspaceList.status === "rejected") {
