@@ -71,15 +71,24 @@ interface KeyspaceResizeEntry {
   state: string;
   completed_at: string | null;
   created_at: string;
+  cluster_name: string;
+  previous_cluster_name: string;
   cluster_rate_display_name: string;
+  previous_cluster_rate_display_name: string;
   actor: Actor;
 }
 
 function keyspaceResizeToEvent(keyspace: string, entry: KeyspaceResizeEntry): TimelineEvent {
+  let desc = entry.cluster_rate_display_name;
+  if (entry.previous_cluster_rate_display_name !== entry.cluster_rate_display_name) {
+    desc = `${entry.previous_cluster_rate_display_name} → ${entry.cluster_rate_display_name}`;
+  } else if (entry.previous_cluster_name !== entry.cluster_name) {
+    desc = `${entry.cluster_rate_display_name} (SKU: ${entry.previous_cluster_name} → ${entry.cluster_name})`;
+  }
   return {
     type: "keyspace_resize",
     at: entry.completed_at ?? entry.created_at,
-    summary: `Keyspace resize (${keyspace}) to ${entry.cluster_rate_display_name} by ${entry.actor.display_name} (${entry.state})`,
+    summary: `Keyspace resize (${keyspace}) ${desc} by ${entry.actor.display_name} (${entry.state})`,
   };
 }
 
@@ -89,6 +98,8 @@ interface ShardResizeEntry {
   id: string;
   state: string;
   key_range: string;
+  cluster_name: string;
+  previous_cluster_name: string;
   cluster_display_name: string;
   previous_cluster_display_name: string;
   completed_at: string | null;
@@ -97,10 +108,18 @@ interface ShardResizeEntry {
 }
 
 function shardResizeToEvent(keyspace: string, entry: ShardResizeEntry): TimelineEvent {
+  let desc: string;
+  if (entry.previous_cluster_display_name !== entry.cluster_display_name) {
+    desc = `${entry.previous_cluster_display_name} → ${entry.cluster_display_name}`;
+  } else if (entry.previous_cluster_name !== entry.cluster_name) {
+    desc = `${entry.cluster_display_name} (SKU: ${entry.previous_cluster_name} → ${entry.cluster_name})`;
+  } else {
+    desc = entry.cluster_display_name;
+  }
   return {
     type: "shard_resize",
     at: entry.completed_at ?? entry.created_at,
-    summary: `Shard resize (${keyspace} ${entry.key_range}) ${entry.previous_cluster_display_name} → ${entry.cluster_display_name} by ${entry.actor.display_name} (${entry.state})`,
+    summary: `Shard resize (${keyspace} ${entry.key_range}) ${desc} by ${entry.actor.display_name} (${entry.state})`,
   };
 }
 

@@ -131,6 +131,8 @@ interface KeyspaceResizeEntry {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  cluster_name: string;
+  previous_cluster_name: string;
   cluster_rate_display_name: string;
   previous_cluster_rate_display_name: string;
   replicas: number;
@@ -155,6 +157,12 @@ function summarizeKeyspaceResize(keyspace: string, entry: KeyspaceResizeEntry) {
   }
   if (entry.cluster_rank !== entry.previous_cluster_rank) {
     changes["cluster_rank"] = { from: entry.previous_cluster_rank, to: entry.cluster_rank };
+  }
+  if (entry.cluster_name !== entry.previous_cluster_name) {
+    changes["cluster_sku"] = {
+      from: entry.previous_cluster_name,
+      to: entry.cluster_name,
+    };
   }
 
   return {
@@ -194,6 +202,12 @@ function summarizeShardResize(keyspace: string, entry: ShardResizeEntry) {
     changes["cluster_size"] = {
       from: entry.previous_cluster_display_name,
       to: entry.cluster_display_name,
+    };
+  }
+  if (entry.cluster_name !== entry.previous_cluster_name) {
+    changes["cluster_sku"] = {
+      from: entry.previous_cluster_name,
+      to: entry.cluster_name,
     };
   }
 
