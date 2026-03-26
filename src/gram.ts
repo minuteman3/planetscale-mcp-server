@@ -1,8 +1,6 @@
 import "dotenv/config";
 import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
-import { executeReadQueryGram } from "./tools/execute-read-query.ts";
-import { executeWriteQueryGram } from "./tools/execute-write-query.ts";
 import { getEventsGram } from "./tools/get-events.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
 import { getMetricsGram } from "./tools/get-metrics.ts";
@@ -25,8 +23,6 @@ const gram = new Gram({
     oauthVariable: "PLANETSCALE_OAUTH2_ACCESS_TOKEN",
   },
 })
-  .extend(executeReadQueryGram)
-  .extend(executeWriteQueryGram)
   .extend(getEventsGram)
   .extend(getInsightsGram)
   .extend(getMetricsGram)
