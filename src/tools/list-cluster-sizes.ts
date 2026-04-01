@@ -2,6 +2,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
+import { formatBytes } from "../lib/format.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
 
@@ -43,8 +44,6 @@ export interface TierSummary {
   storage?: string;
   storage_options?: string[];
 }
-
-import { formatBytes } from "../lib/format.ts";
 
 /**
  * Format CPU string for display (e.g. "1" -> "1 vCPU", "1/2" -> "1/2 vCPU")
