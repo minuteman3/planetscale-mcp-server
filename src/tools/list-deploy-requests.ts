@@ -247,7 +247,7 @@ async function fetchWorkflows(
 export const listDeployRequestsGram = new Gram().tool({
   name: "list_deploy_requests",
   description:
-    "List deploy requests (schema migrations) and VReplication workflows for a PlanetScale database. Deploy requests show DDL operations (ALTER TABLE, CREATE INDEX, etc.) and their progress. Workflows show MoveTables/Reshard operations with milestone timestamps (data copy, verify, switch replicas, switch primaries, cutover, complete).",
+    "Vitess/MySQL databases only. List deploy requests (schema migrations) and VReplication workflows for a PlanetScale database. Deploy requests show DDL operations (ALTER TABLE, CREATE INDEX, etc.) and their progress. Workflows show MoveTables/Reshard operations with milestone timestamps (data copy, verify, switch replicas, switch primaries, cutover, complete).",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),

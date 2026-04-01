@@ -47,7 +47,7 @@ const branchInputSchema = {
 export const getBranchTablesGram = new Gram().tool({
   name: "get_branch_tables",
   description:
-    "List table names for a PlanetScale database branch. Returns only the table names without DDL — use get_table_schema to fetch the full CREATE TABLE statement for a specific table. Use get_branch_keyspaces first to discover available keyspaces.",
+    "Vitess/MySQL databases only. List table names for a PlanetScale database branch. Returns only the table names without DDL — use get_table_schema to fetch the full CREATE TABLE statement for a specific table. Use get_branch_keyspaces first to discover available keyspaces.",
   inputSchema: branchInputSchema,
   async execute(ctx, input) {
     try {
@@ -78,7 +78,7 @@ export const getBranchTablesGram = new Gram().tool({
 export const getTableSchemaGram = new Gram().tool({
   name: "get_table_schema",
   description:
-    "Get the CREATE TABLE DDL for a specific table on a PlanetScale database branch. Use get_branch_tables first to discover available table names.",
+    "Vitess/MySQL databases only. Get the CREATE TABLE DDL for a specific table on a PlanetScale database branch. Use get_branch_tables first to discover available table names.",
   inputSchema: {
     ...branchInputSchema,
     table: z.string().describe("Table name to get the schema for"),

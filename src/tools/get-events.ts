@@ -320,7 +320,7 @@ async function fetchAllShardResizes(
 export const getEventsGram = new Gram().tool({
   name: "get_events",
   description:
-    "Get a unified chronological timeline of all PlanetScale events for a database branch within a time range. Combines VTGate resizes, keyspace/VTTablet resizes, individual shard resizes, deploy requests (schema migrations), and VReplication workflow milestones (MoveTables/Reshard) into a single sorted event stream. Workflows are decomposed into individual milestone events (started, data copy, verify, switch replicas, switch primaries, cutover, completed). Automatically discovers keyspaces and fetches per-keyspace resize history. Useful for incident investigation — call with the incident time window to see everything that changed.",
+    "Vitess/MySQL databases only. Get a unified chronological timeline of all PlanetScale events for a database branch within a time range. Combines VTGate resizes, keyspace/VTTablet resizes, individual shard resizes, deploy requests (schema migrations), and VReplication workflow milestones (MoveTables/Reshard) into a single sorted event stream. Workflows are decomposed into individual milestone events (started, data copy, verify, switch replicas, switch primaries, cutover, completed). Automatically discovers keyspaces and fetches per-keyspace resize history. Useful for incident investigation — call with the incident time window to see everything that changed.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),

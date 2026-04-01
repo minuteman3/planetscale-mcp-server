@@ -329,7 +329,7 @@ async function fetchKeyspaceResizes(
 export const listResizesGram = new Gram().tool({
   name: "list_resizes",
   description:
-    "List recent resize operations for a PlanetScale database branch. Returns VTGate (connection proxy) resizes, keyspace/VTTablet (storage compute) resizes, and individual shard resizes. Automatically discovers keyspaces and fetches per-keyspace resize history. Each resize entry shows what changed with before/after values, the current state, and who initiated it.",
+    "Vitess/MySQL databases only. List recent resize operations for a PlanetScale database branch. Returns VTGate (connection proxy) resizes, keyspace/VTTablet (storage compute) resizes, and individual shard resizes. Automatically discovers keyspaces and fetches per-keyspace resize history. Each resize entry shows what changed with before/after values, the current state, and who initiated it.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),

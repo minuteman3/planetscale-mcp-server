@@ -68,7 +68,7 @@ async function fetchInfrastructure(
 export const getInfrastructureGram = new Gram().tool({
   name: "get_infrastructure",
   description:
-    "Get the actual deployed infrastructure for a PlanetScale database branch. This is the authoritative source for shard sizing — use this tool (not get_branch_keyspaces) when asking 'what size are my shards?'. Returns real VTGate sizes, per-shard cluster sizes (hardware SKUs), tablet placement across availability zones, and keyspace state. When called without a shard parameter, returns infrastructure for the default shard only — to get a specific shard's hardware, pass the shard parameter. To get ALL shard sizes, set all_shards=true (makes one API call per shard).",
+    "Vitess/MySQL databases only. Get the actual deployed infrastructure for a PlanetScale database branch. This is the authoritative source for shard sizing — use this tool (not get_branch_keyspaces) when asking 'what size are my shards?'. Returns real VTGate sizes, per-shard cluster sizes (hardware SKUs), tablet placement across availability zones, and keyspace state. When called without a shard parameter, returns infrastructure for the default shard only — to get a specific shard's hardware, pass the shard parameter. To get ALL shard sizes, set all_shards=true (makes one API call per shard).",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),

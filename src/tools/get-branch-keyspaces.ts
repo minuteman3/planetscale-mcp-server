@@ -27,7 +27,7 @@ function filterKeyspace(keyspace: Keyspace): Partial<Keyspace> {
 export const getBranchKeyspacesGram = new Gram().tool({
   name: "get_branch_keyspaces",
   description:
-    "List keyspaces for a PlanetScale database branch. Returns keyspace configuration including shard count, default cluster size, replica count, replication durability settings, and MySQL/VTTablet options. Useful for understanding the topology and configuration of a database. Note: the cluster size shown is the keyspace-level default — individual shards may have been resized independently. To see actual deployed sizes per shard, use get_infrastructure with all_shards=true.",
+    "Vitess/MySQL databases only. List keyspaces for a PlanetScale database branch. Returns keyspace configuration including shard count, default cluster size, replica count, replication durability settings, and MySQL/VTTablet options. Useful for understanding the topology and configuration of a database. Note: the cluster size shown is the keyspace-level default — individual shards may have been resized independently. To see actual deployed sizes per shard, use get_infrastructure with all_shards=true.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
