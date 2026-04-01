@@ -1,4 +1,5 @@
-const API_BASE = "https://api.planetscale.com/v1";
+export const API_BASE_V1 = "https://api.planetscale.com/v1";
+export const API_BASE_INTERNAL = "https://api.planetscale.com/internal";
 
 export type DatabaseKind = "mysql" | "postgresql";
 
@@ -71,21 +72,52 @@ export class PlanetScaleAPIError extends Error {
   }
 }
 
-async function apiRequest<T>(
+interface ApiRequestOptions extends RequestInit {
+  apiBase?: string;
+}
+
+interface CacheEntry {
+  etag: string;
+  body: unknown;
+}
+
+const etagCache = new Map<string, CacheEntry>();
+
+export async function apiRequest<T>(
   endpoint: string,
   authHeader: string,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<T> {
-  const url = `${API_BASE}${endpoint}`;
+  const { apiBase = API_BASE_V1, ...fetchOptions } = options;
+  const url = `${apiBase}${endpoint}`;
+  const method = (fetchOptions.method ?? "GET").toUpperCase();
+
+  const headers: Record<string, string> = {
+    Authorization: authHeader,
+    "Content-Type": "application/json",
+  };
+
+  if (method === "GET") {
+    const cached = etagCache.get(url);
+    if (cached) {
+      headers["If-None-Match"] = cached.etag;
+    }
+  }
+
+  if (fetchOptions.headers) {
+    Object.assign(headers, fetchOptions.headers as Record<string, string>);
+  }
 
   const response = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    ...fetchOptions,
+    headers,
   });
+
+  // Return cached body on 304 Not Modified
+  if (response.status === 304) {
+    const cached = etagCache.get(url);
+    if (cached) return cached.body as T;
+  }
 
   if (!response.ok) {
     let details: unknown;
@@ -123,7 +155,17 @@ async function apiRequest<T>(
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const body = await response.json() as T;
+
+  // Cache response if server provided an ETag
+  if (method === "GET") {
+    const etag = response.headers.get("etag");
+    if (etag) {
+      etagCache.set(url, { etag, body });
+    }
+  }
+
+  return body;
 }
 
 /**

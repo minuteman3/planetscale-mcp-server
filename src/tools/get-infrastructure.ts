@@ -1,9 +1,7 @@
 import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
-import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
+import { PlanetScaleAPIError, apiRequest, API_BASE_INTERNAL } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
-
-const API_BASE = "https://api.planetscale.com/internal";
 
 interface VtTablet {
   type: "BranchInfrastructureVtTablet";
@@ -62,37 +60,15 @@ async function fetchInfrastructure(
   if (shard) params.set("shard", shard);
   const qs = params.toString();
 
-  const url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/infrastructure${qs ? `?${qs}` : ""}`;
+  const endpoint = `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/infrastructure${qs ? `?${qs}` : ""}`;
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: authHeader,
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    let details: unknown;
-    try {
-      details = await response.json();
-    } catch {
-      details = await response.text();
-    }
-    throw new PlanetScaleAPIError(
-      `Failed to fetch infrastructure: ${response.statusText}`,
-      response.status,
-      details,
-    );
-  }
-
-  return (await response.json()) as InfrastructureResponse;
+  return apiRequest<InfrastructureResponse>(endpoint, authHeader, { apiBase: API_BASE_INTERNAL });
 }
 
 export const getInfrastructureGram = new Gram().tool({
   name: "get_infrastructure",
   description:
-    "Get the current infrastructure configuration for a PlanetScale database branch. Returns VTGate sizes, per-shard cluster sizes (hardware SKUs), tablet placement across availability zones, and keyspace state. When called without a shard parameter, returns infrastructure for the default shard only — to get a specific shard's hardware, pass the shard parameter. To get ALL shard sizes, set all_shards=true (makes one API call per shard, so use sparingly on large databases).",
+    "Get the actual deployed infrastructure for a PlanetScale database branch. This is the authoritative source for shard sizing — use this tool (not get_branch_keyspaces) when asking 'what size are my shards?'. Returns real VTGate sizes, per-shard cluster sizes (hardware SKUs), tablet placement across availability zones, and keyspace state. When called without a shard parameter, returns infrastructure for the default shard only — to get a specific shard's hardware, pass the shard parameter. To get ALL shard sizes, set all_shards=true (makes one API call per shard).",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -108,7 +84,7 @@ export const getInfrastructureGram = new Gram().tool({
     all_shards: z
       .boolean()
       .optional()
-      .describe("Fetch infrastructure for ALL shards and return a per-shard size summary. Makes one API call per shard — use sparingly on databases with many shards (e.g., 128)."),
+      .describe("Fetch infrastructure for ALL shards and return a per-shard size summary. Makes one API call per shard."),
   },
   async execute(ctx, input) {
     try {
