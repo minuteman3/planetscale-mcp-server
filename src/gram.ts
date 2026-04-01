@@ -8,6 +8,7 @@ import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
 import { listDeployRequestsGram } from "./tools/list-deploy-requests.ts";
 import { listResizesGram } from "./tools/list-resizes.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
+import { getInfrastructureGram } from "./tools/get-infrastructure.ts";
 
 const gram = new Gram({
   envSchema: {
@@ -29,6 +30,7 @@ const gram = new Gram({
   .extend(listClusterSizesGram)
   .extend(listDeployRequestsGram)
   .extend(listResizesGram)
-  .extend(searchDocumentationGram);
+  .extend(searchDocumentationGram)
+  .extend(getInfrastructureGram);
 
 export default gram;
