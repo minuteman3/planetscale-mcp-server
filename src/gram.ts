@@ -9,6 +9,8 @@ import { listDeployRequestsGram } from "./tools/list-deploy-requests.ts";
 import { listResizesGram } from "./tools/list-resizes.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
 import { getInfrastructureGram } from "./tools/get-infrastructure.ts";
+import { getBranchKeyspacesGram } from "./tools/get-branch-keyspaces.ts";
+import { getBranchTablesGram, getTableSchemaGram } from "./tools/get-branch-schema.ts";
 
 const gram = new Gram({
   envSchema: {
@@ -31,6 +33,9 @@ const gram = new Gram({
   .extend(listDeployRequestsGram)
   .extend(listResizesGram)
   .extend(searchDocumentationGram)
-  .extend(getInfrastructureGram);
+  .extend(getInfrastructureGram)
+  .extend(getBranchKeyspacesGram)
+  .extend(getBranchTablesGram)
+  .extend(getTableSchemaGram);
 
 export default gram;
