@@ -1,4 +1,5 @@
-const API_BASE = "https://api.planetscale.com/v1";
+export const API_BASE_V1 = "https://api.planetscale.com/v1";
+export const API_BASE_INTERNAL = "https://api.planetscale.com/internal";
 
 export type DatabaseKind = "mysql" | "postgresql";
 
@@ -71,21 +72,52 @@ export class PlanetScaleAPIError extends Error {
   }
 }
 
-async function apiRequest<T>(
+interface ApiRequestOptions extends RequestInit {
+  apiBase?: string;
+}
+
+interface CacheEntry {
+  etag: string;
+  body: unknown;
+}
+
+const etagCache = new Map<string, CacheEntry>();
+
+export async function apiRequest<T>(
   endpoint: string,
   authHeader: string,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<T> {
-  const url = `${API_BASE}${endpoint}`;
+  const { apiBase = API_BASE_V1, ...fetchOptions } = options;
+  const url = `${apiBase}${endpoint}`;
+  const method = (fetchOptions.method ?? "GET").toUpperCase();
+
+  const headers: Record<string, string> = {
+    Authorization: authHeader,
+    "Content-Type": "application/json",
+  };
+
+  if (method === "GET") {
+    const cached = etagCache.get(url);
+    if (cached) {
+      headers["If-None-Match"] = cached.etag;
+    }
+  }
+
+  if (fetchOptions.headers) {
+    Object.assign(headers, fetchOptions.headers as Record<string, string>);
+  }
 
   const response = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    ...fetchOptions,
+    headers,
   });
+
+  // Return cached body on 304 Not Modified
+  if (response.status === 304) {
+    const cached = etagCache.get(url);
+    if (cached) return cached.body as T;
+  }
 
   if (!response.ok) {
     let details: unknown;
@@ -123,7 +155,17 @@ async function apiRequest<T>(
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const body = await response.json() as T;
+
+  // Cache response if server provided an ETag
+  if (method === "GET") {
+    const etag = response.headers.get("etag");
+    if (etag) {
+      etagCache.set(url, { etag, body });
+    }
+  }
+
+  return body;
 }
 
 /**
@@ -268,6 +310,94 @@ export async function deletePostgresRole(
       method: "DELETE",
       body: options?.successor ? JSON.stringify({ successor: options.successor }) : undefined,
     }
+  );
+}
+
+export interface Keyspace {
+  id: string;
+  name: string;
+  shards: number;
+  sharded: boolean;
+  replicas: number;
+  extra_replicas: number;
+  created_at: string;
+  updated_at: string;
+  cluster_name: string;
+  cluster_display_name: string;
+  resizing: boolean;
+  resize_pending: boolean;
+  config_change_in_progress: boolean;
+  ready: boolean;
+  metal: boolean;
+  default: boolean;
+  imported: boolean;
+  vector_pool_allocation: number | null;
+  node_ttl_strategy: string;
+  replication_durability_constraints: { strategy: string };
+  vreplication_flags: {
+    optimize_inserts: boolean;
+    allow_no_blob_binlog_row_image: boolean;
+    vplayer_batching: boolean;
+  };
+  mysqld_options: Record<string, string>;
+  vttablet_options: Record<string, string>;
+}
+
+interface PaginatedResponse<T> {
+  type: string;
+  current_page: number;
+  next_page: number | null;
+  next_page_url: string | null;
+  prev_page: number | null;
+  prev_page_url: string | null;
+  data: T[];
+}
+
+/**
+ * List keyspaces for a database branch
+ */
+export async function listKeyspaces(
+  organization: string,
+  database: string,
+  branch: string,
+  authHeader: string,
+  options?: { page?: number; perPage?: number }
+): Promise<PaginatedResponse<Keyspace>> {
+  const params = new URLSearchParams();
+  if (options?.page) params.set("page", String(options.page));
+  if (options?.perPage) params.set("per_page", String(options.perPage));
+  const query = params.toString();
+
+  return apiRequest<PaginatedResponse<Keyspace>>(
+    `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/keyspaces${query ? `?${query}` : ""}`,
+    authHeader
+  );
+}
+
+export interface SchemaTable {
+  name: string;
+  html: string;
+  raw: string;
+  annotated: boolean;
+}
+
+/**
+ * Get the schema for a database branch, optionally filtered to a single keyspace.
+ */
+export async function getBranchSchema(
+  organization: string,
+  database: string,
+  branch: string,
+  authHeader: string,
+  options?: { keyspace?: string }
+): Promise<{ data: SchemaTable[] }> {
+  const params = new URLSearchParams();
+  if (options?.keyspace) params.set("keyspace", options.keyspace);
+  const query = params.toString();
+
+  return apiRequest<{ data: SchemaTable[] }>(
+    `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/schema${query ? `?${query}` : ""}`,
+    authHeader
   );
 }
 

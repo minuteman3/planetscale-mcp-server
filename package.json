@@ -24,13 +24,12 @@
     "push": "gf push",
     "prebuild": "tsc -p tsconfig.json",
     "prepublishOnly": "npm run build",
-    "build": "gf build"
+    "build": "gf build",
+    "build:server": "esbuild src/server.ts --bundle --platform=node --format=esm --minify --outfile=dist/server.js --banner:js='import { createRequire } from \"node:module\"; const require = createRequire(import.meta.url);'"
   },
   "dependencies": {
     "@gram-ai/functions": "^0.12.1",
     "@modelcontextprotocol/sdk": "^1.20.1",
-    "@neondatabase/serverless": "^1.0.2",
-    "@planetscale/database": "^1.19.0",
     "dotenv": "^17.2.3",
     "zod": "^4"
   },

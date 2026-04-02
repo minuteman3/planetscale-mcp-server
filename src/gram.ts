@@ -1,11 +1,18 @@
 import "dotenv/config";
 import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
-import { executeReadQueryGram } from "./tools/execute-read-query.ts";
-import { executeWriteQueryGram } from "./tools/execute-write-query.ts";
+import { getEventsGram } from "./tools/get-events.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
+import { getMetricsGram } from "./tools/get-metrics.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
+import { listDeployRequestsGram } from "./tools/list-deploy-requests.ts";
+import { listResizesGram } from "./tools/list-resizes.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
+import { getInfrastructureGram } from "./tools/get-infrastructure.ts";
+import { getBranchKeyspacesGram } from "./tools/get-branch-keyspaces.ts";
+import { getBranchTablesGram, getTableSchemaGram } from "./tools/get-branch-schema.ts";
+import { listMaintenanceWindowsGram } from "./tools/list-maintenance-windows.ts";
+import { listBackupsGram } from "./tools/list-backups.ts";
 
 const gram = new Gram({
   envSchema: {
@@ -21,10 +28,18 @@ const gram = new Gram({
     oauthVariable: "PLANETSCALE_OAUTH2_ACCESS_TOKEN",
   },
 })
-  .extend(executeReadQueryGram)
-  .extend(executeWriteQueryGram)
+  .extend(getEventsGram)
   .extend(getInsightsGram)
+  .extend(getMetricsGram)
   .extend(listClusterSizesGram)
-  .extend(searchDocumentationGram);
+  .extend(listDeployRequestsGram)
+  .extend(listResizesGram)
+  .extend(searchDocumentationGram)
+  .extend(getInfrastructureGram)
+  .extend(getBranchKeyspacesGram)
+  .extend(getBranchTablesGram)
+  .extend(getTableSchemaGram)
+  .extend(listMaintenanceWindowsGram)
+  .extend(listBackupsGram);
 
 export default gram;
